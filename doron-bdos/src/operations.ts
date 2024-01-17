@@ -1,6 +1,8 @@
 import { TransactionContext, Transaction, GetApi, ArgSource, ArgSources } from '@dbos-inc/dbos-sdk'
 import { Knex } from 'knex';
 
+import { PostApi } from '@dbos-inc/dbos-sdk' // Add this to your imports.
+
 // The schema of the database table used in this example.
 export interface dbos_hello {
   name: string;
@@ -18,4 +20,15 @@ export class Hello {
     const greet_count = rows[0].greet_count;
     return `Hello, ${user}! You have been greeted ${greet_count} times.\n`;
   }
+
+  @PostApi('/clear/:user') // Serve this function from HTTP POST requests to the /clear endpoint with 'user' as a path parameter
+  @Transaction() // Run this function as a database transaction
+  static async clearTransaction(ctxt: TransactionContext<Knex>, @ArgSource(ArgSources.URL) user: string) {
+    // Delete the database entry for a user.
+    await ctxt.client.raw("DELETE FROM dbos_hello WHERE NAME = ?", [user]);
+    return `Cleared greet_count for ${user}!\n`;
+  }
+
+
+
 }
