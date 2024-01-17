@@ -2,6 +2,8 @@ import { TransactionContext, Transaction, GetApi, ArgSource, ArgSources } from '
 import { Knex } from 'knex';
 
 import { PostApi } from '@dbos-inc/dbos-sdk' // Add this to your imports.
+import { Communicator, CommunicatorContext } from '@dbos-inc/dbos-sdk' // Add these to your imports
+import { Workflow, WorkflowContext } from '@dbos-inc/dbos-sdk' // Add these to your imports
 
 // The schema of the database table used in this example.
 export interface dbos_hello {
@@ -11,7 +13,7 @@ export interface dbos_hello {
 
 export class Hello {
 
-  @GetApi('/greeting/:user') // Serve this function from HTTP GET requests to the /greeting endpoint with 'user' as a path parameter
+  // @GetApi('/greeting/:user') // Serve this function from HTTP GET requests to the /greeting endpoint with 'user' as a path parameter
   @Transaction()  // Run this function as a database transaction
   static async helloTransaction(ctxt: TransactionContext<Knex>, @ArgSource(ArgSources.URL) user: string) {
     // Retrieve and increment the number of times this user has been greeted.
@@ -29,6 +31,35 @@ export class Hello {
     return `Cleared greet_count for ${user}!\n`;
   }
 
+
+  @Communicator() // Tell DBOS this function accesses an external service or API.
+  static async greetPostman(ctxt: CommunicatorContext, greeting: string) {
+    await fetch("https://postman-echo.com/get?greeting=" + encodeURIComponent(greeting));
+    ctxt.logger.info(`Greeting sent to postman!`);
+  }
+
+  @Transaction()
+  static async undoHelloTransaction(ctxt: TransactionContext<Knex>, user: string) {
+    // Decrement greet_count.
+    await ctxt.client.raw("UPDATE dbos_hello SET greet_count = greet_count - 1 WHERE name = ?", [user]);
+  }
+  
+  @GetApi('/greeting/:user')
+  @Workflow()
+  static async helloWorkflow(ctxt: WorkflowContext, @ArgSource(ArgSources.URL) user: string) {
+    const greeting = await ctxt.invoke(Hello).helloTransaction(user);
+    try {
+      await ctxt.invoke(Hello).greetPostman(greeting);
+      return greeting;
+    } catch (e) {
+      ctxt.logger.error(e);
+      await ctxt.invoke(Hello).undoHelloTransaction(user);
+      return `Greeting failed for ${user}\n`;
+    }
+  }
+  
+  
+    
 
 
 }
